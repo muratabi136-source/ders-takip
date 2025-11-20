@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Mert & Yenge Ders Takip", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
 
 # --- API BİLGİLERİ (BURALARI DOLDUR) ---
 BIN_ID = "691f3259d0ea881f40f4bd1b"
@@ -27,10 +27,10 @@ def verileri_gonder(veri):
 
 # --- ARAYÜZ BAŞLIYOR ---
 st.title("❤️ Çiftler İçin Ders Takip")
-st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır. 😎")
+st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır.")
 
 # Yan Menü (Kullanıcı Seçimi)
-kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Yenge"])
+kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Zübeyde"])
 
 if kullanici != "Seçiniz...":
     # Verileri İnternetten Çek
@@ -39,7 +39,7 @@ if kullanici != "Seçiniz...":
     
     # Veri yapısı yoksa oluştur
     if "Mert" not in ana_veri: ana_veri["Mert"] = {}
-    if "Yenge" not in ana_veri: ana_veri["Yenge"] = {}
+    if "Zübeyde" not in ana_veri: ana_veri["Zübeyde"] = {}
 
     benim_verilerim = ana_veri[kullanici]
     
@@ -105,7 +105,7 @@ if kullanici != "Seçiniz...":
 
     # --- SEKME 3: DİĞERİNİ GÖR ---
     with tab3:
-        digeri = "Yenge" if kullanici == "Mert" else "Mert"
+        digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
         st.subheader(f"🕵️ {digeri} Ne Yapmış?")
         
         diger_veri = ana_veri[digeri]
@@ -122,4 +122,5 @@ if kullanici != "Seçiniz...":
 
 else:
     st.warning("👈 Lütfen soldaki menüden ismini seç.")
+
 
