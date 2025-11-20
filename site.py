@@ -7,8 +7,8 @@ import pandas as pd
 st.set_page_config(page_title="Mert & Yenge Ders Takip", page_icon="📚", layout="centered")
 
 # --- API BİLGİLERİ (BURALARI DOLDUR) ---
-BIN_ID = "BURAYA_BIN_ID_YAPISTIR"
-API_KEY = "BURAYA_X_MASTER_KEY_YAPISTIR"
+BIN_ID = "691f3259d0ea881f40f4bd1b"
+API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
 URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
 HEADERS = {"X-Master-Key": API_KEY, "Content-Type": "application/json"}
 
@@ -122,3 +122,4 @@ if kullanici != "Seçiniz...":
 
 else:
     st.warning("👈 Lütfen soldaki menüden ismini seç.")
+
