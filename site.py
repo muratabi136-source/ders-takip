@@ -6,7 +6,7 @@ import pandas as pd
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
 
-# --- API BİLGİLERİ (SENİN GİRDİĞİN BİLGİLER) ---
+# --- API BİLGİLERİ (BUNLARI DOLDURMAYI UNUTMA) ---
 BIN_ID = "691f3259d0ea881f40f4bd1b"
 API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
 URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
@@ -107,9 +107,52 @@ if kullanici != "Seçiniz...":
                 ders_ozeti = df.groupby("ders")["sure"].sum()
                 st.bar_chart(ders_ozeti)
 
-                # 2. GÜN GRAFİĞİ (İŞTE BURASI YENİ!)
+                # 2. GÜN GRAFİĞİ
                 st.write("#### 🗓️ Günlere Göre Dağılım")
                 st.caption("Çalışılmayan günler 0 olarak görünür.")
 
-                # Haftanın tüm günlerini içeren boş bir şablon oluştur
-                tum_gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe",
+                # HATA BURADAYDI, DÜZELTİLDİ:
+                tum_gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
+                
+                gun_sablonu = pd.DataFrame({"gun": tum_gunler, "bos_sure": 0.0})
+                
+                senin_gunlerin = df.groupby("gun")["sure"].sum().reset_index()
+                
+                sonuc_tablosu = pd.merge(gun_sablonu, senin_gunlerin, on="gun", how="left")
+                sonuc_tablosu["sure"] = sonuc_tablosu["sure"].fillna(0)
+                
+                sonuc_tablosu["gun"] = pd.Categorical(sonuc_tablosu["gun"], categories=tum_gunler, ordered=True)
+                sonuc_tablosu = sonuc_tablosu.sort_values("gun")
+
+                st.bar_chart(sonuc_tablosu.set_index("gun")["sure"])
+
+                with st.expander("Detaylı Tabloyu Gör"):
+                    st.dataframe(df[["gun", "ders", "sure"]])
+
+            else:
+                st.warning("Bu hafta veri yok.")
+        else:
+            st.warning("Henüz veri girişi yapmadın.")
+
+    # --- SEKME 3: DİĞERİNİ GÖR ---
+    with tab3:
+        digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
+        st.subheader(f"🕵️ {digeri} Ne Yapmış?")
+        
+        diger_veri = ana_veri[digeri]
+        if suanki_hafta in diger_veri:
+             df_diger = pd.DataFrame(diger_veri[suanki_hafta])
+             if not df_diger.empty:
+                 d_toplam = df_diger["sure"].sum()
+                 st.metric(label=f"{digeri} Toplam", value=f"{d_toplam} Saat")
+                 
+                 st.bar_chart(df_diger.groupby("ders")["sure"].sum())
+                 
+                 st.dataframe(df_diger[["gun", "ders", "sure"]])
+             else:
+                 st.info(f"{digeri} bu hafta yatışta... 😴")
+        else:
+            st.info(f"{digeri} henüz veri girmemiş.")
+
+else:
+    st.warning("👈 Lütfen soldaki menüden ismini seç.")
