@@ -3,11 +3,12 @@ import requests
 import datetime
 import pandas as pd
 import time
+from streamlit_autorefresh import st_autorefresh # Canlı sayaç için gerekli kütüphane
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
 
-# --- API BİLGİLERİ (SENİN VERDİĞİN BİLGİLER) ---
+# --- API BİLGİLERİ (SENİN BİLGİLERİN) ---
 BIN_ID = "691f3259d0ea881f40f4bd1b"
 API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
 URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
@@ -64,8 +65,8 @@ if kullanici != "Seçiniz...":
     st.header(f"👋 Hoş geldin {kullanici}!")
     st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
 
-    # --- SEKME SİSTEMİ (4 SEKME OLDU) ---
-    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ Sayaç"])
+    # --- SEKME SİSTEMİ ---
+    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ CANLI SAYAÇ"])
 
     # --- SEKME 1: VERİ GİRİŞİ ---
     with tab1:
@@ -126,11 +127,14 @@ if kullanici != "Seçiniz...":
                 st.caption("Çalışılmayan günler 0 olarak görünür.")
 
                 tum_gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
+                
                 gun_sablonu = pd.DataFrame({"gun": tum_gunler, "bos_sure": 0.0})
+                
                 senin_gunlerin = df.groupby("gun")["sure"].sum().reset_index()
                 
                 sonuc_tablosu = pd.merge(gun_sablonu, senin_gunlerin, on="gun", how="left")
                 sonuc_tablosu["sure"] = sonuc_tablosu["sure"].fillna(0)
+                
                 sonuc_tablosu["gun"] = pd.Categorical(sonuc_tablosu["gun"], categories=tum_gunler, ordered=True)
                 sonuc_tablosu = sonuc_tablosu.sort_values("gun")
 
@@ -155,45 +159,55 @@ if kullanici != "Seçiniz...":
              if not df_diger.empty:
                  d_toplam = df_diger["sure"].sum()
                  st.metric(label=f"{digeri} Toplam", value=f"{d_toplam:.1f} Saat")
+                 
                  st.bar_chart(df_diger.groupby("ders")["sure"].sum())
+                 
                  st.dataframe(df_diger[["gun", "ders", "sure"]])
              else:
                  st.info(f"{digeri} bu hafta yatışta... 😴")
         else:
             st.info(f"{digeri} henüz veri girmemiş.")
 
-    # --- SEKME 4: SAYAÇ (YENİ!) ---
+    # --- SEKME 4: CANLI SAYAÇ (YENİ GÜÇLÜ SÜRÜM) ---
     with tab4:
-        st.subheader("⏱️ Çalışma Sayacı")
-        st.info("Telefondan süre tutmana gerek yok. Buradan başlat, bitince otomatik kaydet!")
-
+        st.subheader("⏱️ Canlı Çalışma Sayacı")
+        
         if st.session_state.kronometre_baslangic is None:
-            # Sayaç çalışmıyorsa BAŞLAT butonu
+            # Sayaç kapalıyken
+            st.info("Hazır olduğunda başlat.")
             if st.button("▶️ BAŞLAT", type="primary", use_container_width=True):
                 st.session_state.kronometre_baslangic = datetime.datetime.now()
                 st.rerun()
         else:
-            # Sayaç çalışıyorsa
+            # Sayaç açıkken -> Saniyede bir yenile (Kalp Pili)
+            st_autorefresh(interval=1000, key="sayac_yenileme")
+
+            # Süreyi hesapla
             baslangic = st.session_state.kronometre_baslangic
             simdi = datetime.datetime.now()
             fark = simdi - baslangic
             
-            # Geçen süreyi göster (Canlı akmaz ama sayfayı yenilersen güncellenir)
-            st.success(f"⏳ Sayaç İşliyor... ({baslangic.strftime('%H:%M')} 'de başladın)")
+            # Zamanı güzel formatla (01:45:30 gibi)
+            toplam_saniye = int(fark.total_seconds())
+            saat = toplam_saniye // 3600
+            dakika = (toplam_saniye % 3600) // 60
+            saniye = toplam_saniye % 60
             
-            if st.button("⏹️ DURDUR", type="secondary", use_container_width=True):
-                # Süreyi hesapla (Saat cinsinden)
-                saniye = fark.total_seconds()
-                saat = saniye / 3600
+            zaman_yazisi = f"{saat:02d}:{dakika:02d}:{saniye:02d}"
+            
+            # KOCAMAN GÖSTER
+            st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 70px;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
+            st.success(f"Başlangıç: {baslangic.strftime('%H:%M')}")
+            
+            if st.button("⏹️ DURDUR VE KAYDET", type="secondary", use_container_width=True):
+                # Süreyi hafızaya al (Saat cinsinden)
+                st.session_state.gecen_sure = round(fark.total_seconds() / 3600, 2)
+                st.session_state.kronometre_baslangic = None
                 
-                # Hafızaya at (Ders Ekle sekmesi bunu okuyacak)
-                st.session_state.gecen_sure = round(saat, 2)
-                st.session_state.kronometre_baslangic = None # Sayacı durdur
-                
-                st.balloons() # Kutlama :)
-                st.success(f"Tebrikler! {st.session_state.gecen_sure} saat çalıştın.")
-                st.info("👉 Şimdi 'Ders Ekle' sekmesine git, süre oraya otomatik geldi!")
-                time.sleep(2)
+                st.balloons()
+                st.success(f"Süper! {st.session_state.gecen_sure} saat çalıştın.")
+                st.info("👈 Şimdi 'Ders Ekle' sekmesine git, süre oraya otomatik geldi.")
+                time.sleep(3)
                 st.rerun()
 
 else:
