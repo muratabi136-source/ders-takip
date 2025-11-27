@@ -3,18 +3,18 @@ import requests
 import datetime
 import pandas as pd
 import time
-from streamlit_autorefresh import st_autorefresh # Canlı sayaç için gerekli kütüphane
+from streamlit_autorefresh import st_autorefresh
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
 
-# --- API BİLGİLERİ (SENİN BİLGİLERİN) ---
-BIN_ID = "691f3259d0ea881f40f4bd1b"
-API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
+# --- API BİLGİLERİ (BUNLARI DOLDURMAYI UNUTMA) ---
+BIN_ID = "BURAYA_BIN_ID_YAPISTIR"
+API_KEY = "BURAYA_X_MASTER_KEY_YAPISTIR"
 URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
 HEADERS = {"X-Master-Key": API_KEY, "Content-Type": "application/json"}
 
-# --- SAYAÇ İÇİN HAFIZA AYARLARI ---
+# --- SAYAÇ İÇİN HAFIZA ---
 if 'kronometre_baslangic' not in st.session_state:
     st.session_state.kronometre_baslangic = None
 if 'gecen_sure' not in st.session_state:
@@ -27,7 +27,7 @@ def verileri_cek():
         if response.status_code == 200:
             return response.json()['record']
         else:
-            st.error("Veri çekilemedi. API Key veya Bin ID kontrol et.")
+            st.error("Veri çekilemedi. API Key kontrol et.")
             return {}
     except:
         return {}
@@ -39,44 +39,41 @@ def verileri_gonder(veri):
     except:
         return False
 
-# --- ARAYÜZ BAŞLIYOR ---
+# --- ARAYÜZ ---
 st.title("❤️ Çiftler İçin Ders Takip")
 st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır.")
 
-# Yan Menü (Kullanıcı Seçimi)
 kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Zübeyde"])
 
 if kullanici != "Seçiniz...":
-    # Verileri İnternetten Çek
-    with st.spinner('Veriler Buluttan İndiriliyor...'):
+    # Verileri İndir
+    with st.spinner('Veriler Yükleniyor...'):
         ana_veri = verileri_cek()
     
-    # Veri yapısı yoksa oluştur
+    if not ana_veri: ana_veri = {"Mert": {}, "Zübeyde": {}}
     if "Mert" not in ana_veri: ana_veri["Mert"] = {}
     if "Zübeyde" not in ana_veri: ana_veri["Zübeyde"] = {}
 
     benim_verilerim = ana_veri[kullanici]
     
-    # Tarih Bilgisi
     bugun = datetime.date.today()
     yil, hafta_no, _ = bugun.isocalendar()
     suanki_hafta = f"{yil}-{hafta_no}. Hafta"
 
     st.header(f"👋 Hoş geldin {kullanici}!")
-    st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
-
+    
     # --- SEKME SİSTEMİ ---
-    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ CANLI SAYAÇ"])
+    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem (Geçmiş)", "👀 Diğerinin Durumu", "⏱️ Sayaç"])
 
     # --- SEKME 1: VERİ GİRİŞİ ---
     with tab1:
+        st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
         st.subheader("Bugün ne çalıştın?")
         with st.form("ders_formu", clear_on_submit=True):
             ders_adi = st.text_input("Ders Adı (Örn: Matematik)")
             
-            # Eğer sayaçtan gelen bir süre varsa onu varsayılan yap
-            varsayilan_sure = st.session_state.gecen_sure if st.session_state.gecen_sure > 0 else 0.5
-            sure = st.number_input("Süre (Saat)", min_value=0.1, max_value=24.0, step=0.1, value=float(varsayilan_sure))
+            varsayilan = st.session_state.gecen_sure if st.session_state.gecen_sure > 0 else 0.5
+            sure = st.number_input("Süre (Saat)", min_value=0.1, max_value=24.0, step=0.1, value=float(varsayilan))
             
             gunler_listesi = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
             secilen_gun = st.selectbox("Gün", gunler_listesi, index=bugun.weekday())
@@ -85,10 +82,7 @@ if kullanici != "Seçiniz...":
             
             if buton and ders_adi:
                 yeni_kayit = {
-                    "ders": ders_adi,
-                    "sure": sure,
-                    "gun": secilen_gun,
-                    "tarih": str(bugun)
+                    "ders": ders_adi, "sure": sure, "gun": secilen_gun, "tarih": str(bugun)
                 }
                 
                 if suanki_hafta not in benim_verilerim:
@@ -97,116 +91,114 @@ if kullanici != "Seçiniz...":
                 benim_verilerim[suanki_hafta].append(yeni_kayit)
                 ana_veri[kullanici] = benim_verilerim
                 
-                with st.spinner("Kaydediliyor..."):
-                    verileri_gonder(ana_veri) # Buluta yükle
-                
-                # Kayıttan sonra sayacı sıfırla ki bir sonraki girişte karışmasın
+                verileri_gonder(ana_veri)
                 st.session_state.gecen_sure = 0.0
-                
                 st.success(f"✅ {ders_adi} başarıyla kaydedildi!")
                 time.sleep(1)
-                st.rerun() # Sayfayı yenile
+                st.rerun()
 
-    # --- SEKME 2: KARNE (Tablo ve Grafikler) ---
+    # --- SEKME 2: KARNE (ZAMAN MAKİNESİ EKLENDİ) ---
     with tab2:
-        st.subheader("📈 Senin Durumun")
+        st.subheader("📈 Performans Analizi")
         
-        if suanki_hafta in benim_verilerim:
-            df = pd.DataFrame(benim_verilerim[suanki_hafta])
+        # --- ZAMAN MAKİNESİ KISMI ---
+        # Mevcut kayıtlı haftaları bulalım
+        kayitli_haftalar = list(benim_verilerim.keys())
+        # Haftaları yeniden eskiye sıralayalım
+        kayitli_haftalar.sort(reverse=True)
+        
+        # Eğer hiç kayıt yoksa şimdiki haftayı ekle ki liste boş kalmasın
+        if suanki_hafta not in kayitli_haftalar:
+            kayitli_haftalar.insert(0, suanki_hafta)
+            
+        # HAFTA SEÇİCİ KUTUSU
+        secilen_hafta = st.selectbox("Hangi Haftayı İncelemek İstersin?", kayitli_haftalar)
+        
+        st.markdown(f"### 🗓️ {secilen_hafta} Raporu")
+
+        if secilen_hafta in benim_verilerim:
+            df = pd.DataFrame(benim_verilerim[secilen_hafta])
             if not df.empty:
                 toplam_saat = df["sure"].sum()
-                st.metric(label="Bu Hafta Toplam", value=f"{toplam_saat:.1f} Saat")
+                st.metric(label=f"{secilen_hafta} Toplamı", value=f"{toplam_saat:.1f} Saat")
                 
-                # 1. DERS GRAFİĞİ
-                st.write("#### 📚 Derslere Göre Dağılım")
-                ders_ozeti = df.groupby("ders")["sure"].sum()
-                st.bar_chart(ders_ozeti)
+                st.write("#### 📚 Ders Dağılımı")
+                st.bar_chart(df.groupby("ders")["sure"].sum())
 
-                # 2. GÜN GRAFİĞİ
-                st.write("#### 🗓️ Günlere Göre Dağılım")
-                st.caption("Çalışılmayan günler 0 olarak görünür.")
-
+                st.write("#### 🗓️ Gün Dağılımı")
                 tum_gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
-                
                 gun_sablonu = pd.DataFrame({"gun": tum_gunler, "bos_sure": 0.0})
-                
                 senin_gunlerin = df.groupby("gun")["sure"].sum().reset_index()
-                
                 sonuc_tablosu = pd.merge(gun_sablonu, senin_gunlerin, on="gun", how="left")
                 sonuc_tablosu["sure"] = sonuc_tablosu["sure"].fillna(0)
-                
                 sonuc_tablosu["gun"] = pd.Categorical(sonuc_tablosu["gun"], categories=tum_gunler, ordered=True)
                 sonuc_tablosu = sonuc_tablosu.sort_values("gun")
-
+                
                 st.bar_chart(sonuc_tablosu.set_index("gun")["sure"])
-
-                with st.expander("Detaylı Tabloyu Gör"):
+                
+                with st.expander("Detaylı Liste"):
                     st.dataframe(df[["gun", "ders", "sure"]])
-
             else:
-                st.warning("Bu hafta veri yok.")
+                st.warning("Bu haftada veri girişi yok.")
         else:
-            st.warning("Henüz veri girişi yapmadın.")
+            st.warning("Bu hafta için henüz veri girmemişsin.")
 
-    # --- SEKME 3: DİĞERİNİ GÖR ---
+    # --- SEKME 3: DİĞERİ ---
     with tab3:
         digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
         st.subheader(f"🕵️ {digeri} Ne Yapmış?")
         
         diger_veri = ana_veri[digeri]
-        if suanki_hafta in diger_veri:
-             df_diger = pd.DataFrame(diger_veri[suanki_hafta])
+        
+        # Diğer kullanıcının da kayıtlı haftalarını görebilirsin
+        diger_haftalar = list(diger_veri.keys())
+        diger_haftalar.sort(reverse=True)
+        if not diger_haftalar: diger_haftalar = [suanki_hafta]
+        
+        secilen_hafta_diger = st.selectbox(f"{digeri} için Hangi Hafta?", diger_haftalar, key="diger_select")
+        
+        if secilen_hafta_diger in diger_veri:
+             df_diger = pd.DataFrame(diger_veri[secilen_hafta_diger])
              if not df_diger.empty:
                  d_toplam = df_diger["sure"].sum()
-                 st.metric(label=f"{digeri} Toplam", value=f"{d_toplam:.1f} Saat")
-                 
+                 st.metric(label=f"{digeri} Toplam ({secilen_hafta_diger})", value=f"{d_toplam:.1f} Saat")
                  st.bar_chart(df_diger.groupby("ders")["sure"].sum())
-                 
                  st.dataframe(df_diger[["gun", "ders", "sure"]])
              else:
                  st.info(f"{digeri} bu hafta yatışta... 😴")
         else:
             st.info(f"{digeri} henüz veri girmemiş.")
 
-    # --- SEKME 4: CANLI SAYAÇ (YENİ GÜÇLÜ SÜRÜM) ---
+    # --- SEKME 4: CANLI SAYAÇ ---
     with tab4:
         st.subheader("⏱️ Canlı Çalışma Sayacı")
         
         if st.session_state.kronometre_baslangic is None:
-            # Sayaç kapalıyken
             st.info("Hazır olduğunda başlat.")
             if st.button("▶️ BAŞLAT", type="primary", use_container_width=True):
                 st.session_state.kronometre_baslangic = datetime.datetime.now()
                 st.rerun()
         else:
-            # Sayaç açıkken -> Saniyede bir yenile (Kalp Pili)
             st_autorefresh(interval=1000, key="sayac_yenileme")
-
-            # Süreyi hesapla
             baslangic = st.session_state.kronometre_baslangic
             simdi = datetime.datetime.now()
             fark = simdi - baslangic
             
-            # Zamanı güzel formatla (01:45:30 gibi)
             toplam_saniye = int(fark.total_seconds())
             saat = toplam_saniye // 3600
             dakika = (toplam_saniye % 3600) // 60
             saniye = toplam_saniye % 60
-            
             zaman_yazisi = f"{saat:02d}:{dakika:02d}:{saniye:02d}"
             
-            # KOCAMAN GÖSTER
-            st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 70px;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 80px;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
             st.success(f"Başlangıç: {baslangic.strftime('%H:%M')}")
             
             if st.button("⏹️ DURDUR VE KAYDET", type="secondary", use_container_width=True):
-                # Süreyi hafızaya al (Saat cinsinden)
                 st.session_state.gecen_sure = round(fark.total_seconds() / 3600, 2)
                 st.session_state.kronometre_baslangic = None
-                
                 st.balloons()
                 st.success(f"Süper! {st.session_state.gecen_sure} saat çalıştın.")
-                st.info("👈 Şimdi 'Ders Ekle' sekmesine git, süre oraya otomatik geldi.")
+                st.info("👈 'Ders Ekle' sekmesine git, süre oraya otomatik geldi.")
                 time.sleep(3)
                 st.rerun()
 
