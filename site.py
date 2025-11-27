@@ -8,13 +8,13 @@ from streamlit_autorefresh import st_autorefresh
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
 
-# --- API BİLGİLERİ (BUNLARI DOLDURMAYI UNUTMA) ---
+# --- SENİN ŞİFRELERİN ---
 BIN_ID = "691f3259d0ea881f40f4bd1b"
 API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
 URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
 HEADERS = {"X-Master-Key": API_KEY, "Content-Type": "application/json"}
 
-# --- SAYAÇ İÇİN HAFIZA ---
+# --- SAYAÇ BAŞLANGIÇ AYARLARI ---
 if 'kronometre_baslangic' not in st.session_state:
     st.session_state.kronometre_baslangic = None
 if 'gecen_sure' not in st.session_state:
@@ -39,7 +39,7 @@ def verileri_gonder(veri):
         return False
 
 # --- ARAYÜZ ---
-st.title("❤️ Çiftler İçin Ders Takip")
+st.title("📚 AGS İçin Ders Takip")
 st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır.")
 
 kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Zübeyde"])
@@ -49,7 +49,7 @@ if kullanici != "Seçiniz...":
     with st.spinner('Veriler Yükleniyor...'):
         ana_veri = verileri_cek()
     
-    # Veri yapısı yoksa veya eksikse oluştur (Hata önleyici)
+    # Hata önleyici kontroller
     if not isinstance(ana_veri, dict): ana_veri = {}
     if "Mert" not in ana_veri: ana_veri["Mert"] = {}
     if "Zübeyde" not in ana_veri: ana_veri["Zübeyde"] = {}
@@ -61,21 +61,29 @@ if kullanici != "Seçiniz...":
     suanki_hafta = f"{yil}-{hafta_no}. Hafta"
 
     st.header(f"👋 Hoş geldin {kullanici}!")
-    st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
-
+    
     # --- SEKME SİSTEMİ ---
-    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ ÖLÜMSÜZ SAYAÇ"])
+    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ CANLI SAYAÇ"])
 
     # --- SEKME 1: VERİ GİRİŞİ ---
     with tab1:
+        st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
         st.subheader("Bugün ne çalıştın?")
         with st.form("ders_formu", clear_on_submit=True):
             ders_adi = st.text_input("Ders Adı (Örn: Matematik)")
             
+            # Sayaçtan gelen süre varsa onu varsayılan yap
+            # URL parametresi veya Session State kontrolü
             url_params = st.query_params
             kayitli_sure = float(url_params.get("kayitli_sure", 0.0))
             
-            varsayilan = kayitli_sure if kayitli_sure > 0 else 0.5
+            if kayitli_sure > 0:
+                varsayilan = kayitli_sure
+            elif st.session_state.gecen_sure > 0:
+                varsayilan = st.session_state.gecen_sure
+            else:
+                varsayilan = 0.5
+
             sure = st.number_input("Süre (Saat)", min_value=0.1, max_value=24.0, step=0.1, value=float(varsayilan))
             
             gunler_listesi = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
@@ -96,6 +104,8 @@ if kullanici != "Seçiniz...":
                 
                 verileri_gonder(ana_veri)
                 
+                # Temizlik
+                st.session_state.gecen_sure = 0.0
                 if "kayitli_sure" in st.query_params:
                     del st.query_params["kayitli_sure"]
                 
@@ -103,14 +113,27 @@ if kullanici != "Seçiniz...":
                 time.sleep(1)
                 st.rerun()
 
-    # --- SEKME 2: KARNE ---
+    # --- SEKME 2: KARNE (GEÇMİŞ HAFTALAR DAHİL) ---
     with tab2:
-        st.subheader("📈 Senin Durumun")
-        if suanki_hafta in benim_verilerim:
-            df = pd.DataFrame(benim_verilerim[suanki_hafta])
+        st.subheader("📈 Performans Analizi")
+        
+        kayitli_haftalar = list(benim_verilerim.keys())
+        kayitli_haftalar.sort(reverse=True)
+        
+        if not kayitli_haftalar:
+            kayitli_haftalar = [suanki_hafta]
+        elif suanki_hafta not in kayitli_haftalar:
+            kayitli_haftalar.insert(0, suanki_hafta)
+            
+        secilen_hafta = st.selectbox("Hangi Haftayı İncelemek İstersin?", kayitli_haftalar)
+        
+        st.markdown(f"### 🗓️ {secilen_hafta} Raporu")
+
+        if secilen_hafta in benim_verilerim:
+            df = pd.DataFrame(benim_verilerim[secilen_hafta])
             if not df.empty:
                 toplam_saat = df["sure"].sum()
-                st.metric(label="Bu Hafta Toplam", value=f"{toplam_saat:.1f} Saat")
+                st.metric(label=f"{secilen_hafta} Toplamı", value=f"{toplam_saat:.1f} Saat")
                 
                 st.write("#### 📚 Ders Dağılımı")
                 st.bar_chart(df.groupby("ders")["sure"].sum())
@@ -123,23 +146,22 @@ if kullanici != "Seçiniz...":
                 sonuc_tablosu["sure"] = sonuc_tablosu["sure"].fillna(0)
                 sonuc_tablosu["gun"] = pd.Categorical(sonuc_tablosu["gun"], categories=tum_gunler, ordered=True)
                 sonuc_tablosu = sonuc_tablosu.sort_values("gun")
+                
                 st.bar_chart(sonuc_tablosu.set_index("gun")["sure"])
                 
                 with st.expander("Detaylı Liste"):
                     st.dataframe(df[["gun", "ders", "sure"]])
             else:
-                st.warning("Bu hafta veri yok.")
+                st.warning("Bu haftada veri girişi yok.")
         else:
-            st.warning("Henüz veri girişi yapmadın.")
+            st.warning("Bu hafta için henüz veri girmemişsin.")
 
-    # --- SEKME 3: DİĞERİ (GÜVENLİ HALE GETİRİLDİ) ---
+    # --- SEKME 3: DİĞERİ ---
     with tab3:
         digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
         st.subheader(f"🕵️ {digeri} Ne Yapmış?")
         
-        # HATA VEREN YER BURASIYDI, ARTIK GÜVENLİ:
         diger_veri = ana_veri.get(digeri, {})
-        
         diger_haftalar = list(diger_veri.keys())
         diger_haftalar.sort(reverse=True)
         if not diger_haftalar: diger_haftalar = [suanki_hafta]
@@ -158,25 +180,29 @@ if kullanici != "Seçiniz...":
         else:
             st.info(f"{digeri} henüz veri girmemiş.")
 
-    # --- SEKME 4: ÖLÜMSÜZ SAYAÇ ---
+    # --- SEKME 4: CANLI AKAN SAYAÇ ---
     with tab4:
-        st.subheader("⏱️ Ölümsüz Sayaç")
-        st.info("Bu sayaç, siteyi kapatsan bile arka planda çalışmaya devam eder.")
-
+        st.subheader("⏱️ Canlı Çalışma Sayacı")
+        
+        # URL'den başlangıç zamanını kontrol et (Ölümsüzlük Modu)
         url_params = st.query_params
         baslangic_zamani_str = url_params.get("baslangic_zamani", None)
 
         if baslangic_zamani_str is None:
+            # Sayaç kapalı
+            st.info("Hazır olduğunda başlat.")
             if st.button("▶️ BAŞLAT", type="primary", use_container_width=True):
                 simdi_ts = str(datetime.datetime.now().timestamp())
                 st.query_params["baslangic_zamani"] = simdi_ts
                 st.rerun()
         else:
+            # Sayaç açık -> Kalp pili çalışsın (Saniyede 1 yenile)
             st_autorefresh(interval=1000, key="sayac_yenileme")
 
             try:
                 baslangic_ts = float(baslangic_zamani_str)
                 baslangic_dt = datetime.datetime.fromtimestamp(baslangic_ts)
+                
                 simdi = datetime.datetime.now()
                 fark = simdi - baslangic_dt
                 
@@ -184,16 +210,21 @@ if kullanici != "Seçiniz...":
                 saat = toplam_saniye // 3600
                 dakika = (toplam_saniye % 3600) // 60
                 saniye = toplam_saniye % 60
+                
                 zaman_yazisi = f"{saat:02d}:{dakika:02d}:{saniye:02d}"
                 
-                st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 80px;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
+                # SAYAÇ GÖRÜNTÜSÜ
+                st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 80px; font-family: monospace;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
                 st.success(f"Başlangıç: {baslangic_dt.strftime('%H:%M:%S')}")
 
                 if st.button("⏹️ DURDUR VE KAYDET", type="secondary", use_container_width=True):
                     hesaplanan_sure = round(fark.total_seconds() / 3600, 2)
+                    
                     if "baslangic_zamani" in st.query_params:
                         del st.query_params["baslangic_zamani"]
+                    
                     st.query_params["kayitli_sure"] = str(hesaplanan_sure)
+                    
                     st.balloons()
                     st.success(f"Süper! {hesaplanan_sure} saat çalıştın.")
                     st.info("👈 Şimdi 'Ders Ekle' sekmesine git, süre oraya otomatik geldi.")
