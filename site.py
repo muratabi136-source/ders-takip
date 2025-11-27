@@ -6,7 +6,7 @@ import time
 from streamlit_autorefresh import st_autorefresh
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Mert &  Ders Takip", page_icon="📚", layout="centered")
 
 # --- API BİLGİLERİ (BUNLARI DOLDURMAYI UNUTMA) ---
 BIN_ID = "691f3259d0ea881f40f4bd1b"
@@ -40,19 +40,18 @@ def verileri_gonder(veri):
         return False
 
 # --- ARAYÜZ ---
-st.title("❤️ Çiftler İçin Ders Takip")
+st.title("📚 AGS İçin Ders Takip")
 st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır.")
 
-kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Zübeyde"])
+kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert"])
 
 if kullanici != "Seçiniz...":
     # Verileri İndir
     with st.spinner('Veriler Yükleniyor...'):
         ana_veri = verileri_cek()
     
-    if not ana_veri: ana_veri = {"Mert": {}, "Zübeyde": {}}
+    if not ana_veri: ana_veri = {"Mert": {}, "": {}}
     if "Mert" not in ana_veri: ana_veri["Mert"] = {}
-    if "Zübeyde" not in ana_veri: ana_veri["Zübeyde"] = {}
 
     benim_verilerim = ana_veri[kullanici]
     
@@ -145,7 +144,7 @@ if kullanici != "Seçiniz...":
 
     # --- SEKME 3: DİĞERİ ---
     with tab3:
-        digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
+        digeri = "" if kullanici == "Mert" else "Mert"
         st.subheader(f"🕵️ {digeri} Ne Yapmış?")
         
         diger_veri = ana_veri[digeri]
@@ -204,4 +203,5 @@ if kullanici != "Seçiniz...":
 
 else:
     st.warning("👈 Lütfen soldaki menüden ismini seç.")
+
 
