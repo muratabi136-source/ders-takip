@@ -1,240 +1,214 @@
-import streamlit as st
-import requests
-import datetime
-import pandas as pd
-import time
-from streamlit_autorefresh import st_autorefresh
+import os
+import qrcode
+from flask import Flask, render_template_string, request, send_from_directory, redirect, url_for
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Mert & Zübeyde Ders Takip", page_icon="📚", layout="centered")
+app = Flask(__name__)
 
-# --- SENİN ŞİFRELERİN ---
-BIN_ID = "691f3259d0ea881f40f4bd1b"
-API_KEY = "$2a$10$ln7I9iGthRnAvR06HPE3g.USj5Li/vCQiH/XNKYpfjLb67jHguweW"
-URL = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-HEADERS = {"X-Master-Key": API_KEY, "Content-Type": "application/json"}
+# Dosyaların kaydedileceği klasör
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- SAYAÇ BAŞLANGIÇ AYARLARI ---
-if 'kronometre_baslangic' not in st.session_state:
-    st.session_state.kronometre_baslangic = None
-if 'gecen_sure' not in st.session_state:
-    st.session_state.gecen_sure = 0.0
+# Listeler
+uploaded_files_list = []
+uploaded_links_list = []
 
-# --- FONKSİYONLAR ---
-def verileri_cek():
-    try:
-        response = requests.get(URL, headers=HEADERS)
-        if response.status_code == 200:
-            return response.json()['record']
-        else:
-            return {}
-    except:
-        return {}
-
-def verileri_gonder(veri):
-    try:
-        requests.put(URL, json=veri, headers=HEADERS)
-        return True
-    except:
-        return False
-
-# --- ARAYÜZ ---
-st.title("📚 AGS İçin Ders Takip")
-st.markdown("Bu site **Mert** tarafından Python ile kodlanmıştır.")
-
-kullanici = st.sidebar.selectbox("Kim Giriş Yapıyor?", ["Seçiniz...", "Mert", "Zübeyde"])
-
-if kullanici != "Seçiniz...":
-    # Verileri İndir
-    with st.spinner('Veriler Yükleniyor...'):
-        ana_veri = verileri_cek()
+# 1. TAHTA EKRANI (Sol: QR, Orta: Dosyalar, Sağ: Linkler)
+@app.route('/')
+def index():
+    global uploaded_files_list, uploaded_links_list
+    current_url = request.host_url.rstrip('/') + '/upload'
     
-    # Hata önleyici kontroller
-    if not isinstance(ana_veri, dict): ana_veri = {}
-    if "Mert" not in ana_veri: ana_veri["Mert"] = {}
-    if "Zübeyde" not in ana_veri: ana_veri["Zübeyde"] = {}
+    # QR kodu üret
+    qr = qrcode.QRCode(box_size=10, border=2)
+    qr.add_data(current_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    img.save("static_qr.png")
 
-    benim_verilerim = ana_veri.get(kullanici, {})
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+        <meta charset="UTF-8">
+        <title>Akıllı Tahta Dosya & Link Paylaşımı</title>
+        <meta http-equiv="refresh" content="3"> <!-- 3 saniyede bir otomatik yenilenir -->
+        <style>
+            * { box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+            .main-container { display: flex; background: white; width: 1250px; max-width: 100%; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }
+            
+            /* Sütunlar Genel */
+            .pane { padding: 30px; display: flex; flex-direction: column; justify-content: flex-start; }
+            
+            /* Sol Taraf: QR Kod */
+            .left-pane { flex: 0.9; background: #ffffff; text-align: center; border-right: 1px solid #eee; align-items: center; justify-content: center; }
+            .left-pane h1 { font-size: 20px; color: #333; margin-bottom: 8px; }
+            .left-pane p { color: #666; font-size: 14px; margin-bottom: 15px; }
+            img.qr { width: 220px; height: 220px; border: 4px solid #f0f0f0; border-radius: 12px; }
+
+            /* Orta ve Sağ Paneller (Listeler) */
+            .middle-pane, .right-pane { flex: 1.1; background: #fafbfc; }
+            .middle-pane { border-right: 1px solid #eee; }
+            
+            h2 { font-size: 18px; color: #333; margin-top: 0; margin-bottom: 15px; border-bottom: 2px solid #eaeaea; padding-bottom: 8px; }
+            .list-container { flex-grow: 1; max-height: 380px; overflow-y: auto; padding-right: 5px; }
+            
+            .item-card { background: white; padding: 10px 14px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #e1e4e8; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+            .item-text { font-size: 13px; color: #333; font-weight: 500; word-break: break-all; max-width: 200px; }
+            
+            .btn-action { background: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 6px; font-size: 12px; font-weight: 600; transition: background 0.2s; white-space: nowrap; }
+            .btn-action:hover { background: #218838; }
+            .btn-link { background: #007bff; }
+            .btn-link:hover { background: #0056b3; }
+            
+            .empty-text { color: #999; font-style: italic; text-align: center; margin-top: 40px; font-size: 13px; }
+        </style>
+    </head>
+    <body>
+        <div class="main-container">
+            <!-- 1. En Sol: QR Kod -->
+            <div class="pane left-pane">
+                <h1>Tahtaya Gönder</h1>
+                <p>Kameranla okut, dosya veya link at!</p>
+                <img src="/qr" class="qr">
+            </div>
+
+            <!-- 2. Orta: Dosya Listesi -->
+            <div class="pane middle-pane">
+                <h2>Dosyalar</h2>
+                <div class="list-container">
+                    {% if files %}
+                        {% for f in files %}
+                            <div class="item-card">
+                                <span class="item-text" title="{{ f }}">{{ f }}</span>
+                                <a href="/uploads/{{ f }}" target="_blank" class="btn-action">Aç / İndir</a>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="empty-text">Henüz dosya yok.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 3. Sağ: Link Listesi -->
+            <div class="pane right-pane">
+                <h2>Linkler (URL)</h2>
+                <div class="list-container">
+                    {% if links %}
+                        {% for l in links %}
+                            <div class="item-card">
+                                <span class="item-text" title="{{ l }}">{{ l }}</span>
+                                <a href="{{ l }}" target="_blank" class="btn-action btn-link">Git</a>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="empty-text">Henüz link yok.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    ''', files=uploaded_files_list, links=uploaded_links_list)
+
+@app.route('/qr')
+def qrcode_image():
+    return send_from_directory('.', 'static_qr.png')
+
+# 2. TELEFON EKRANI (Sol: Dosya Yükleme, Sağ: Link Ekleme)
+@app.route('/upload', methods=['GET', 'POST'])
+def upload():
+    global uploaded_files_list, uploaded_links_list
     
-    bugun = datetime.date.today()
-    yil, hafta_no, _ = bugun.isocalendar()
-    suanki_hafta = f"{yil}-{hafta_no}. Hafta"
-
-    st.header(f"👋 Hoş geldin {kullanici}!")
-    
-    # --- SEKME SİSTEMİ ---
-    tab1, tab2, tab3, tab4 = st.tabs(["✍️ Ders Ekle", "📊 Karnem", "👀 Diğerinin Durumu", "⏱️ CANLI SAYAÇ"])
-
-    # --- SEKME 1: VERİ GİRİŞİ ---
-    with tab1:
-        st.info(f"📅 Şu anki dönem: **{suanki_hafta}**")
-        st.subheader("Bugün ne çalıştın?")
-        with st.form("ders_formu", clear_on_submit=True):
-            ders_adi = st.text_input("Ders Adı (Örn: Matematik)")
-            
-            # Sayaçtan gelen süre varsa onu varsayılan yap
-            # URL parametresi veya Session State kontrolü
-            url_params = st.query_params
-            kayitli_sure = float(url_params.get("kayitli_sure", 0.0))
-            
-            if kayitli_sure > 0:
-                varsayilan = kayitli_sure
-            elif st.session_state.gecen_sure > 0:
-                varsayilan = st.session_state.gecen_sure
-            else:
-                varsayilan = 0.5
-
-            sure = st.number_input("Süre (Saat)", min_value=0.1, max_value=24.0, step=0.1, value=float(varsayilan))
-            
-            gunler_listesi = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
-            secilen_gun = st.selectbox("Gün", gunler_listesi, index=bugun.weekday())
-            
-            buton = st.form_submit_button("Kaydet 💾")
-            
-            if buton and ders_adi:
-                yeni_kayit = {
-                    "ders": ders_adi, "sure": sure, "gun": secilen_gun, "tarih": str(bugun)
-                }
-                
-                if suanki_hafta not in benim_verilerim:
-                    benim_verilerim[suanki_hafta] = []
-                
-                benim_verilerim[suanki_hafta].append(yeni_kayit)
-                ana_veri[kullanici] = benim_verilerim
-                
-                verileri_gonder(ana_veri)
-                
-                # Temizlik
-                st.session_state.gecen_sure = 0.0
-                if "kayitli_sure" in st.query_params:
-                    del st.query_params["kayitli_sure"]
-                
-                st.success(f"✅ {ders_adi} başarıyla kaydedildi!")
-                time.sleep(1)
-                st.rerun()
-
-    # --- SEKME 2: KARNE (GEÇMİŞ HAFTALAR DAHİL) ---
-    with tab2:
-        st.subheader("📈 Performans Analizi")
+    if request.method == 'POST':
+        action_type = request.form.get('action_type')
         
-        kayitli_haftalar = list(benim_verilerim.keys())
-        kayitli_haftalar.sort(reverse=True)
-        
-        if not kayitli_haftalar:
-            kayitli_haftalar = [suanki_hafta]
-        elif suanki_hafta not in kayitli_haftalar:
-            kayitli_haftalar.insert(0, suanki_hafta)
-            
-        secilen_hafta = st.selectbox("Hangi Haftayı İncelemek İstersin?", kayitli_haftalar)
-        
-        st.markdown(f"### 🗓️ {secilen_hafta} Raporu")
-
-        if secilen_hafta in benim_verilerim:
-            df = pd.DataFrame(benim_verilerim[secilen_hafta])
-            if not df.empty:
-                toplam_saat = df["sure"].sum()
-                st.metric(label=f"{secilen_hafta} Toplamı", value=f"{toplam_saat:.1f} Saat")
-                
-                st.write("#### 📚 Ders Dağılımı")
-                st.bar_chart(df.groupby("ders")["sure"].sum())
-
-                st.write("#### 🗓️ Gün Dağılımı")
-                tum_gunler = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
-                gun_sablonu = pd.DataFrame({"gun": tum_gunler, "bos_sure": 0.0})
-                senin_gunlerin = df.groupby("gun")["sure"].sum().reset_index()
-                sonuc_tablosu = pd.merge(gun_sablonu, senin_gunlerin, on="gun", how="left")
-                sonuc_tablosu["sure"] = sonuc_tablosu["sure"].fillna(0)
-                sonuc_tablosu["gun"] = pd.Categorical(sonuc_tablosu["gun"], categories=tum_gunler, ordered=True)
-                sonuc_tablosu = sonuc_tablosu.sort_values("gun")
-                
-                st.bar_chart(sonuc_tablosu.set_index("gun")["sure"])
-                
-                with st.expander("Detaylı Liste"):
-                    st.dataframe(df[["gun", "ders", "sure"]])
-            else:
-                st.warning("Bu haftada veri girişi yok.")
-        else:
-            st.warning("Bu hafta için henüz veri girmemişsin.")
-
-    # --- SEKME 3: DİĞERİ ---
-    with tab3:
-        digeri = "Zübeyde" if kullanici == "Mert" else "Mert"
-        st.subheader(f"🕵️ {digeri} Ne Yapmış?")
-        
-        diger_veri = ana_veri.get(digeri, {})
-        diger_haftalar = list(diger_veri.keys())
-        diger_haftalar.sort(reverse=True)
-        if not diger_haftalar: diger_haftalar = [suanki_hafta]
-        
-        secilen_hafta_diger = st.selectbox(f"{digeri} - Hangi Hafta?", diger_haftalar, key="diger_select")
-
-        if secilen_hafta_diger in diger_veri:
-             df_diger = pd.DataFrame(diger_veri[secilen_hafta_diger])
-             if not df_diger.empty:
-                 d_toplam = df_diger["sure"].sum()
-                 st.metric(label=f"{digeri} Toplam ({secilen_hafta_diger})", value=f"{d_toplam:.1f} Saat")
-                 st.bar_chart(df_diger.groupby("ders")["sure"].sum())
-                 st.dataframe(df_diger[["gun", "ders", "sure"]])
-             else:
-                 st.info(f"{digeri} bu hafta yatışta... 😴")
-        else:
-            st.info(f"{digeri} henüz veri girmemiş.")
-
-    # --- SEKME 4: CANLI AKAN SAYAÇ ---
-    with tab4:
-        st.subheader("⏱️ Canlı Çalışma Sayacı")
-        
-        # URL'den başlangıç zamanını kontrol et (Ölümsüzlük Modu)
-        url_params = st.query_params
-        baslangic_zamani_str = url_params.get("baslangic_zamani", None)
-
-        if baslangic_zamani_str is None:
-            # Sayaç kapalı
-            st.info("Hazır olduğunda başlat.")
-            if st.button("▶️ BAŞLAT", type="primary", use_container_width=True):
-                simdi_ts = str(datetime.datetime.now().timestamp())
-                st.query_params["baslangic_zamani"] = simdi_ts
-                st.rerun()
-        else:
-            # Sayaç açık -> Kalp pili çalışsın (Saniyede 1 yenile)
-            st_autorefresh(interval=1000, key="sayac_yenileme")
-
-            try:
-                baslangic_ts = float(baslangic_zamani_str)
-                baslangic_dt = datetime.datetime.fromtimestamp(baslangic_ts)
-                
-                simdi = datetime.datetime.now()
-                fark = simdi - baslangic_dt
-                
-                toplam_saniye = int(fark.total_seconds())
-                saat = toplam_saniye // 3600
-                dakika = (toplam_saniye % 3600) // 60
-                saniye = toplam_saniye % 60
-                
-                zaman_yazisi = f"{saat:02d}:{dakika:02d}:{saniye:02d}"
-                
-                # SAYAÇ GÖRÜNTÜSÜ
-                st.markdown(f"<h1 style='text-align: center; color: #FF4B4B; font-size: 80px; font-family: monospace;'>{zaman_yazisi}</h1>", unsafe_allow_html=True)
-                st.success(f"Başlangıç: {baslangic_dt.strftime('%H:%M:%S')}")
-
-                if st.button("⏹️ DURDUR VE KAYDET", type="secondary", use_container_width=True):
-                    hesaplanan_sure = round(fark.total_seconds() / 3600, 2)
+        # Dosya yüklendiyse
+        if action_type == 'file':
+            if 'file' in request.files:
+                file = request.files['file']
+                if file.filename != '':
+                    filename = file.filename
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(filepath)
+                    if filename not in uploaded_files_list:
+                        uploaded_files_list.insert(0, filename)
+                        
+        # Link eklendiyse
+        elif action_type == 'link':
+            link_url = request.form.get('link_url')
+            if link_url:
+                # http ile başlamıyorsa otomatik ekle
+                if not link_url.startswith(('http://', 'https://')):
+                    link_url = 'https://' + link_url
+                if link_url not in uploaded_links_list:
+                    uploaded_links_list.insert(0, link_url)
                     
-                    if "baslangic_zamani" in st.query_params:
-                        del st.query_params["baslangic_zamani"]
-                    
-                    st.query_params["kayitli_sure"] = str(hesaplanan_sure)
-                    
-                    st.balloons()
-                    st.success(f"Süper! {hesaplanan_sure} saat çalıştın.")
-                    st.info("👈 Şimdi 'Ders Ekle' sekmesine git, süre oraya otomatik geldi.")
-                    time.sleep(2)
-                    st.rerun()
-            except:
-                st.error("Sayaç verisi bozuldu, sıfırlanıyor...")
-                if "baslangic_zamani" in st.query_params:
-                    del st.query_params["baslangic_zamani"]
-                st.rerun()
+        return '''
+        <script>
+            alert("İşlem başarıyla tahtaya gönderildi!");
+            window.location.href = "/upload";
+        </script>
+        '''
 
-else:
-    st.warning("👈 Lütfen soldaki menüden ismini seç.")
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Akıllı Tahta Gönderim Paneli</title>
+        <style>
+            * { box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+            .mobile-container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 420px; }
+            
+            .box { background: white; padding: 25px 20px; border-radius: 16px; box-shadow: 0 6px 15px rgba(0,0,0,0.06); text-align: center; }
+            h2 { color: #333; font-size: 18px; margin-bottom: 8px; }
+            p { color: #666; font-size: 13px; margin-bottom: 15px; }
+            
+            input[type="file"], input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; background: #fafafa; font-size: 14px; margin-bottom: 12px; }
+            input[type="file"] { border: 2px dashed #ccc; }
+            
+            button { background: #007bff; color: white; border: none; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 8px; width: 100%; cursor: pointer; transition: background 0.2s; }
+            button:hover { background: #0056b3; }
+            .btn-file { background: #28a745; }
+            .btn-file:hover { background: #218838; }
+        </style>
+    </head>
+    <body>
+        <div class="mobile-container">
+            <!-- Sol / Üst Kısım: Dosya Gönder -->
+            <div class="box">
+                <h2>Dosya Gönder</h2>
+                <p>Fotoğraf, video veya PDF seç.</p>
+                <form method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="action_type" value="file">
+                    <input type="file" name="file" required>
+                    <button type="submit" class="btn-file">Dosyayı Gönder</button>
+                </form>
+            </div>
+
+            <!-- Sağ / Alt Kısım: Link Gönder -->
+            <div class="box">
+                <h2>Link Gönder</h2>
+                <p>İnternet adresi veya YouTube linki yapıştır.</p>
+                <form method="post">
+                    <input type="hidden" name="action_type" value="link">
+                    <input type="text" name="link_url" placeholder="örn: youtube.com/..." required>
+                    <button type="submit">Link Gönder</button>
+                </form>
+            </div>
+        </div>
+    </body>
+    </html>
+    ''')
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
